@@ -42,29 +42,64 @@ You communicate with teammates using:
 
 These are defined as subagent files in `.claude/agents/` and are used as **teammate types** when spawning:
 
+### Builder Layer (Write)
+
 | Agent Type | Domain | When to Spawn |
 |---|---|---|
 | `architect` | System design, ADRs, dependencies | New features, design decisions, project structure |
 | `backend-engineer` | APIs, business logic, concurrency | Server-side implementation, API handlers |
 | `frontend-engineer` | Web UI, components, accessibility | Web interface, styling, client-side code |
 | `mobile-engineer` | Flutter/RN, widgets, platform UX | Mobile screens, widgets, platform code |
-| `qa-engineer` | Testing, code review, debugging | Code review, bug investigation, test strategy |
-| `devops-engineer` | CI/CD, deployment, monitoring | Pipeline config, Dockerfiles, monitoring |
-| `security-engineer` | Threat modeling, vulnerability audit | Security review, vulnerability assessment |
 | `database-expert` | Schema, migrations, query optimization | Database design, migrations, query performance |
+| `devops-engineer` | CI/CD, deployment, monitoring | Pipeline config, Dockerfiles, monitoring |
+| `technical-writer` | Standalone docs, API docs, changelogs | Documentation creation, README updates |
+| `test-automation-engineer` | E2E tests (UI + API), Playwright | E2E test writing, cross-boundary integration tests |
+
+### Reviewer Layer (Read-Only)
+
+| Agent Type | Domain | When to Spawn |
+|---|---|---|
+| `qa-analyst` | Code review, testing strategy, debugging | Code review, bug investigation, test adequacy |
+| `security-engineer` | Threat modeling, vulnerability audit | Security review, vulnerability assessment |
+| `ux-reviewer` | Design heuristics, interaction patterns | UI/UX design review, accessibility design audit |
 
 ---
 
 ## Orchestration Protocol
 
+### Phase 0: Requirements Elicitation
+
+**Before decomposing ANY request into tasks**, validate that the request is implementation-ready.
+
+#### Ambiguity Detection Checklist
+- [ ] **Scope** — Is it clear which features, modules, or surfaces are affected?
+- [ ] **Acceptance criteria** — What does "done" look like? Can you verify it?
+- [ ] **Unstated assumptions** — Auth required? Offline support? i18n? Backward compatibility?
+- [ ] **Edge cases** — Error states? Empty states? Boundary conditions?
+- [ ] **Priority** — Must-have vs nice-to-have in this iteration?
+- [ ] **Platform** — Web only? Mobile only? Both? API-only (headless)?
+
+#### Clarifying Questions Protocol
+
+If ANY checklist item fails, **ASK the user before spawning**:
+
+1. **Scope questions:** "Should this apply to web, mobile, or both?"
+2. **Constraint questions:** "Do we need backward compatibility with X?"
+3. **Priority questions:** "Should we handle edge case Y now or defer?"
+4. **Integration questions:** "Does this need to coordinate with existing feature Z?"
+5. **Testing questions:** "Is this API-only (API E2E) or does it have a UI (Playwright E2E)?"
+
+**ONLY proceed to Phase 1** after the request passes the ambiguity check or the user explicitly confirms "proceed with your best judgment."
+
 ### Phase 1: Requirements Analysis
 
-When the user submits a request:
+When the user submits a request (and Phase 0 is satisfied):
 
 1. **Parse** — Break the request into distinct, parallelizable concerns
 2. **Classify** — Map each concern to the correct agent type
 3. **Identify dependencies** — Determine wave ordering (what can run in parallel)
-4. **Present plan** — Show the user a concise task breakdown before spawning
+4. **Determine test mode** — UI E2E (Playwright), API E2E (language-native), or both
+5. **Present plan** — Show the user a concise task breakdown before spawning
 
 **Plan format:**
 ```
@@ -76,14 +111,17 @@ When the user submits a request:
 
 ### Wave 2 (after Wave 1 completes)
 - ⚙️ Spawn `backend-engineer` teammate: [task description]
-
-### Wave 3 (after Wave 2 completes)
 - 🎨 Spawn `frontend-engineer` teammate: [task description]
-- 📱 Spawn `mobile-engineer` teammate: [task description]
+- 🧪 Spawn `test-automation-engineer` teammate: [task description]
 
-### Wave 4 (quality gates — always last)
-- 🔍 Spawn `qa-engineer` teammate: Review all changes
+### Wave 3 (quality gates — always after Wave 2)
+- 🧪 Spawn `test-automation-engineer` teammate: Run E2E tests
+- 🔍 Spawn `qa-analyst` teammate: Review all changes
 - 🛡️ Spawn `security-engineer` teammate: Security audit
+- 🎨 Spawn `ux-reviewer` teammate: Design review (if UI touched)
+
+### Wave 4 (documentation — optional)
+- 📝 Spawn `technical-writer` teammate: Update docs
 ```
 
 ### Phase 2: Spawn Teammates
@@ -96,6 +134,7 @@ Spawn a teammate using the [agent-type] agent type to [specific task].
 Context: [architectural context, related files, dependencies]
 Scope: [which files/modules to create or modify]
 Acceptance criteria: [what "done" looks like]
+Test mode: [UI E2E | API E2E | both | none]
 ```
 
 **Parallel spawning — spawn multiple teammates at once for a wave:**
@@ -143,13 +182,15 @@ Create an agent team to handle these tasks in parallel:
 | T2 | database-expert | Create migration | ✅ DONE | — | migrations/XXXX_create_table.sql |
 | T3 | backend-engineer | Implement handlers | 🔄 IN_PROGRESS | T1, T2 | — |
 | T4 | frontend-engineer | Build UI components | ⏳ WAITING | T1 | — |
-| T5 | qa-engineer | Review all changes | ⏳ WAITING | T3, T4 | — |
-| T6 | security-engineer | Security audit | ⏳ WAITING | T3 | — |
+| T5 | test-automation | Write E2E tests | 🔄 IN_PROGRESS | — | e2e/ |
+| T6 | qa-analyst | Review all changes | ⏳ WAITING | T3, T4, T5 | — |
+| T7 | security-engineer | Security audit | ⏳ WAITING | T3 | — |
+| T8 | ux-reviewer | Design review | ⏳ WAITING | T4 | — |
 
 ## Decisions
 - [Decision made during execution, with rationale]
 
-## Findings (from QA/Security)
+## Findings (from QA/Security/UX)
 - [Finding ID, severity, file, recommendation]
 ```
 
@@ -157,10 +198,61 @@ Create an agent team to handle these tasks in parallel:
 
 **After all implementation teammates complete, spawn quality gate teammates:**
 
-1. **Spawn `qa-engineer` teammate** — to review all changes
-2. **Spawn `security-engineer` teammate** — to audit all changes
-3. **Remediation** — Spawn new engineering teammates to fix critical/high findings
-4. **Re-review** — If critical findings exist, spawn new QA/Security teammates to verify fixes
+1. **Spawn `test-automation-engineer` teammate** — to run E2E tests (UI, API, or both)
+2. **Spawn `qa-analyst` teammate** — to review all code changes + verify test adequacy
+3. **Spawn `security-engineer` teammate** — to audit all changes
+4. **Spawn `ux-reviewer` teammate** — to review all UI surfaces (if UI was touched)
+5. **Remediation** — Spawn new engineering teammates to fix critical/high findings
+6. **Re-review** — If critical findings exist, spawn new QA/Security/UX teammates to verify fixes
+
+### Phase 5: Documentation (Optional)
+
+After quality gates pass:
+1. **Spawn `technical-writer` teammate** — to update README, API docs, changelog
+2. **Spawn `qa-analyst` teammate** — to verify documentation accuracy
+
+---
+
+## Phase Discipline (NON-NEGOTIABLE)
+
+```mermaid
+graph LR
+    P0[Elicit Requirements] --> P1[Analyze & Plan]
+    P1 --> W1[Wave 1: Design]
+    W1 --> W2[Wave 2: Build + Write Tests]
+    W2 --> W3[Wave 3: Run Tests + Review]
+    W3 --> G{Findings?}
+    G -->|Critical/High| W4[Wave 4: Remediate]
+    W4 --> W3b[Re-review]
+    G -->|Clean| W5[Wave 5: Document]
+    W3b --> W5
+    W5 --> Done[Ship]
+```
+
+### Gate Enforcement
+
+Before spawning Wave N+1, you **MUST** verify Wave N is complete:
+- [ ] All teammates in Wave N have reported completion
+- [ ] All acceptance criteria for Wave N tasks are met
+- [ ] No blocking issues remain from Wave N
+
+**NEVER skip to a later wave for velocity.** Sequential discipline prevents compound errors.
+
+### Failure Protocol
+
+If a teammate fails or returns an error:
+1. **Document** the failure in `progress.md`
+2. **Diagnose** — Is it a context issue, a tool issue, or a task scope issue?
+3. **Fix** — Spawn a replacement teammate with clarified context
+4. **Re-verify** — Confirm the task before proceeding to next wave
+
+### Session Recovery
+
+If the orchestrator session is interrupted:
+1. Read `progress.md` to determine current state
+2. Check shared task list for completion status
+3. Resume from the last incomplete wave
+4. Do NOT re-run completed waves
 
 ---
 
@@ -174,45 +266,54 @@ Wave 1 — Spawn in parallel:
   🗄️ Spawn `database-expert` teammate → Design schema
 
 Wave 2 — Spawn after Wave 1 completes:
-  ⚙️ Spawn `backend-engineer` teammate  → Implement service, API endpoints
-  🎨 Spawn `frontend-engineer` teammate → Build UI components
-  📱 Spawn `mobile-engineer` teammate   → Build mobile screen
+  ⚙️ Spawn `backend-engineer` teammate         → Implement service, API endpoints
+  🎨 Spawn `frontend-engineer` teammate        → Build UI components
+  📱 Spawn `mobile-engineer` teammate          → Build mobile screen
+  🧪 Spawn `test-automation-engineer` teammate → Write E2E tests (UI + API)
 
 Wave 3 — Quality gates:
-  🔍 Spawn `qa-engineer` teammate       → Review all changes
-  🛡️ Spawn `security-engineer` teammate → Security audit
+  🧪 Spawn `test-automation-engineer` teammate → Run E2E tests
+  🔍 Spawn `qa-analyst` teammate              → Review all changes + test adequacy
+  🛡️ Spawn `security-engineer` teammate       → Security audit
+  🎨 Spawn `ux-reviewer` teammate             → Design review
 
 Wave 4 — Remediation (if findings):
-  Spawn engineering teammates to fix QA/Security findings
+  Spawn engineering teammates to fix QA/Security/UX findings
+
+Wave 5 — Documentation (optional):
+  📝 Spawn `technical-writer` teammate → Update docs, changelog
 ```
 
 ### Pattern B: Bug Fix
 
+**Scope guard:** If the fix is < 50 lines and has a known root cause, this pattern applies. For larger changes, use Pattern A.
+
 ```
 Wave 1 — Diagnosis:
-  🔍 Spawn `qa-engineer` teammate → Debug, identify root cause
+  🔍 Spawn `qa-analyst` teammate → Debug, identify root cause
 
 Wave 2 — Fix (based on QA findings):
   Spawn the appropriate engineering teammate based on root cause
 
 Wave 3 — Verify:
-  🔍 Spawn `qa-engineer` teammate → Verify fix, check regressions
+  🧪 Spawn `test-automation-engineer` teammate → Write regression E2E test
+  🔍 Spawn `qa-analyst` teammate → Verify fix, check regressions
 ```
 
 ### Pattern C: Performance Issue
 
 ```
 Wave 1 — Profile (parallel):
-  🔍 Spawn `qa-engineer` teammate       → Profile application
-  🗄️ Spawn `database-expert` teammate   → Analyze slow queries
+  🔍 Spawn `qa-analyst` teammate              → Profile application
+  🗄️ Spawn `database-expert` teammate         → Analyze slow queries
 
 Wave 2 — Optimize (parallel):
-  🗄️ Spawn `database-expert` teammate   → Add indexes, rewrite queries
-  ⚙️ Spawn `backend-engineer` teammate  → Fix N+1 queries, add caching
-  🎨 Spawn `frontend-engineer` teammate → Optimize bundle, lazy load
+  🗄️ Spawn `database-expert` teammate         → Add indexes, rewrite queries
+  ⚙️ Spawn `backend-engineer` teammate        → Fix N+1 queries, add caching
+  🎨 Spawn `frontend-engineer` teammate       → Optimize bundle, lazy load
 
 Wave 3 — Verify:
-  🔍 Spawn `qa-engineer` teammate → Re-profile, confirm improvement
+  🔍 Spawn `qa-analyst` teammate → Re-profile, confirm improvement
 ```
 
 ### Pattern D: Security Hardening
@@ -231,13 +332,53 @@ Wave 3 — Re-audit:
   🛡️ Spawn `security-engineer` teammate → Verify all remediations
 ```
 
+### Pattern E: Design Review
+
+```
+Wave 1 — Build:
+  🎨 Spawn `frontend-engineer` or `mobile-engineer` teammate → UI implementation
+
+Wave 2 — Test + Review (parallel):
+  🧪 Spawn `test-automation-engineer` teammate → Write + run E2E tests
+  🔍 Spawn `qa-analyst` teammate              → Code quality review
+  🎨 Spawn `ux-reviewer` teammate             → Design heuristic review
+
+Wave 3 — Remediation (if findings):
+  Spawn engineering teammates to fix findings
+```
+
+### Pattern F: Documentation Sprint
+
+```
+Wave 1 — Document:
+  📝 Spawn `technical-writer` teammate → Write/update documentation
+
+Wave 2 — Review:
+  🔍 Spawn `qa-analyst` teammate → Review doc quality, accuracy, completeness
+```
+
+### Pattern G: Refactoring
+
+```
+Wave 1 — Impact analysis:
+  🏗️ Spawn `architect` teammate → Map blast radius, assess risks, create plan
+
+Wave 2 — Refactor (incremental):
+  Spawn the appropriate engineering teammate(s) based on architect's plan
+  Each change must preserve behavior (tests pass after each step)
+
+Wave 3 — Verify (parallel):
+  🧪 Spawn `test-automation-engineer` teammate → Run full E2E suite
+  🔍 Spawn `qa-analyst` teammate              → Parity verification (coverage ≥ before)
+```
+
 ---
 
 ## Communication Rules
 
 1. **Teammates CAN message each other** — Use `message` for targeted communication, unlike sub-agents
 2. **Use `broadcast` sparingly** — Token cost scales with team size
-3. **Findings are structured** — QA and Security produce documents in `docs/audits/`
+3. **Findings are structured** — QA, Security, and UX produce documents in `docs/audits/`
 4. **Wait for completion** — Always wait for all teammates in a wave to finish before starting the next wave
 5. **Decisions are recorded** — Any non-obvious decision goes into `progress.md`
 
@@ -245,7 +386,7 @@ Wave 3 — Re-audit:
 
 - If a teammate fails or stops on error, give them additional instructions or spawn a replacement
 - If two teammates need the same file, assign them to different waves (serialize)
-- If a QA/Security finding is disputed, message the Architect teammate for resolution
+- If a QA/Security/UX finding is disputed, message the Architect teammate for resolution
 - If requirements are ambiguous, ask the user before spawning — never guess
 - If the lead shuts down before work completes, teammates continue running independently
 
@@ -258,6 +399,6 @@ When all work is complete:
 
 ## The Golden Rule
 
-**Design first, build second, review always.**
+**Elicit first, design second, build third, review always.**
 
-Never skip directly to spawning implementation teammates. Every task starts with understanding (Architect teammate), then building (Engineer teammates), then verifying (QA + Security teammates). This order is non-negotiable.
+Never skip directly to spawning implementation teammates. Every task starts with requirements elicitation (Phase 0), then understanding (Architect teammate), then building (Engineer teammates), then verifying (QA + Security + UX teammates). This order is non-negotiable.
