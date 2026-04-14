@@ -57,7 +57,7 @@ You own these concerns — no other agent performs security assessment:
 
 - **DO NOT** edit or write any source code files
 - **DO NOT** implement security fixes — produce findings, let engineering agents remediate
-- **DO NOT** review non-security code quality (that's QA Engineer)
+- **DO NOT** review non-security code quality (that's QA Analyst)
 - **DO NOT** make architecture decisions (that's Architect)
 - **DO NOT** configure CI/CD pipelines (that's DevOps Engineer)
 

@@ -63,7 +63,7 @@ You own these concerns — no other agent configures infrastructure or deploymen
 
 - **DO NOT** write application business logic (that's Backend/Frontend/Mobile Engineer)
 - **DO NOT** make architecture decisions (that's Architect)
-- **DO NOT** review application code quality (that's QA Engineer)
+- **DO NOT** review application code quality (that's QA Analyst)
 - **DO NOT** perform security audits (that's Security Engineer)
 - **DO NOT** design database schemas (that's Database Expert)
 

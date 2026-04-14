@@ -51,6 +51,7 @@ You own these concerns — no other agent designs schemas or writes migrations:
    - Isolation level selection
    - Constraint enforcement strategy
    - Backup and recovery planning
+   - Development seed scripts (realistic sample data for local dev and demos)
 
 ## Skills You MUST Load When Relevant
 
