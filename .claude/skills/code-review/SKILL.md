@@ -125,11 +125,91 @@ Load the anti-pattern checklist for the language(s) under review:
 
 ### 8. Cross-Boundary Checks
 
-For full audits, cross-boundary concerns (integration contracts, database schema, configuration hygiene, dependency health, test coverage gaps) are checked via the dedicated dimension checklist in the audit workflow.
+For full audits, apply the cross-boundary dimension checklist below. For standalone reviews, apply only the dimensions that are relevant to the project.
 
-When invoking this skill standalone (outside audit), apply the applicable dimensions from that checklist manually and tag findings with `[INT]`, `[DB]`, or `[CFG]` as appropriate.
+#### Dimension Selection
 
-**Zero-Findings Guard:** If this review produces fewer than 3 findings, you MUST produce a "Dimensions Covered" attestation section in the findings document, listing each cross-boundary dimension and the specific files or queries you examined. Only then may you declare a clean result.
+At the start of cross-boundary checks, you MUST state which dimensions are active:
+> "Activating dimensions: A, B, C, D, E. Skipping F (no mobile app)."
+
+| Dimension | Activate When |
+|---|---|
+| **A. Integration Contracts** | Project has both a frontend and a backend |
+| **B. Database & Schema** | Project uses a relational/document database |
+| **C. Configuration & Environment** | Always — universal |
+| **D. Dependency Health** | Always — universal |
+| **E. Test Coverage Gaps** | Always — universal |
+| **F. Mobile ↔ Backend** | Project has a mobile app and a backend |
+
+#### Dimension A: Integration Contracts
+*Applies to: full-stack projects with frontend + backend*
+
+- [ ] Map every backend endpoint (route + method) against its frontend adapter — flag any unmapped endpoints in either direction
+- [ ] Verify request/response field names, types, and status codes match across the boundary
+- [ ] Verify all outbound HTTP calls use the project's centralized API client (not raw `fetch`/`axios`)
+- [ ] Build an auth coverage matrix: which endpoints require auth, do the frontend adapters send tokens for each?
+- [ ] Check error contract alignment: does the frontend handle the full set of error codes the backend can return?
+
+#### Dimension B: Database & Schema
+*Applies to: projects using a relational or document database*
+
+- [ ] Verify all tables have required base columns (`id`, `created_at`, `updated_at`)
+- [ ] Check all foreign keys have corresponding indexes
+- [ ] If using Supabase or Postgres RLS: verify RLS policies exist on every table storing user data
+- [ ] Cross-reference the application's struct/model field names against actual DB column names — flag any drift
+- [ ] Check migrations are reversible (up + down) and follow the additive-first strategy
+- [ ] Scan storage adapters for N+1 query patterns
+
+#### Dimension C: Configuration & Environment
+*Always active*
+
+- [ ] No hardcoded secrets, tokens, URLs, or credentials in source code
+- [ ] `.env.template` exists and covers every env var referenced in the codebase
+- [ ] Startup validation fails fast on missing required config (does not silently fall back to bad defaults)
+- [ ] Secrets are never logged (not in debug, not in error messages)
+
+#### Dimension D: Dependency Health
+*Always active*
+
+- [ ] No unused top-level dependencies in `go.mod` / `package.json` / `Cargo.toml`
+- [ ] No circular dependencies between feature modules
+- [ ] Cross-module imports only use each module's public API (not internal files)
+- [ ] Run `npm audit` / `go list -m -json all | nancy` / `cargo audit` — flag high-severity CVEs
+
+#### Dimension E: Test Coverage Gaps
+*Always active*
+
+- [ ] A handler/controller test exists for every API endpoint
+- [ ] An integration test exists for every storage/database adapter
+- [ ] Every error path (catch block, error return) has at least one test that exercises it
+- [ ] E2E tests cover the primary user journeys (login, main feature flow, error states)
+
+#### Dimension F: Mobile ↔ Backend
+*Applies to: projects with a mobile app and a backend*
+
+- [ ] API version compatibility — mobile must not call endpoints that no longer exist
+- [ ] Offline data sync: conflict resolution and retry logic are tested
+- [ ] Auth token refresh flows work correctly when the access token expires mid-session
+
+---
+
+#### Zero-Findings Guard
+
+If this review produces fewer than 3 findings, you MUST produce a "Dimensions Covered" attestation section in the findings document:
+
+```markdown
+## Dimensions Covered
+| Dimension | Status | Files / Queries Examined |
+|---|---|---|
+| A. Integration Contracts | ✅ Checked / ⏭ Skipped (reason) | e.g., all 26 routes vs 11 adapters |
+| B. Database & Schema | ✅ Checked / ⏭ Skipped (reason) | e.g., 8 tables + 4 storage adapters |
+| C. Configuration & Environment | ✅ Checked | e.g., scanned for secrets, verified .env.template |
+| D. Dependency Health | ✅ Checked | e.g., ran npm audit, checked for unused deps |
+| E. Test Coverage Gaps | ✅ Checked | e.g., verified handler tests for all endpoints |
+| F. Mobile ↔ Backend | ⏭ Skipped | No mobile app in this project |
+```
+
+Only then may you declare a clean result.
 
 ---
 
